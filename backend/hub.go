@@ -86,6 +86,22 @@ func handleMessages() {
 					}
 				}
 			}
+		case "start_voice":
+			if msg.To != "" {
+				if target, ok := userSockets[msg.To]; ok {
+					target.WriteJSON(msg)
+				}
+			} else if msg.Group != "" {
+				if members, ok := groups[msg.Group]; ok {
+					for _, memberID := range members {
+						if memberID != msg.From {
+							if conn, connected := userSockets[memberID]; connected {
+								conn.WriteJSON(msg)
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }

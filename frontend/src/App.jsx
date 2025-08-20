@@ -8,6 +8,7 @@ import VideoControls from "./components/VideoControls";
 import VideoBox from "./components/VideoBox";
 import ChatBox from "./components/ChatBox";
 import { useApp } from "./context/useAppContext";
+import VoiceCallControls from "./components/VoiceCallControls";
 
 function AppContent() {
   const { connected } = useApp();
@@ -25,6 +26,7 @@ function AppContent() {
               <GroupControls />
               <VideoControls />
             </div>
+            <VoiceCallControls />
 
             <ChatControls />
 

@@ -6,23 +6,24 @@ export default function useWebRTC(username, wsSend) {
   const [remoteStreams, setRemoteStreams] = useState({});
   const localStreamRef = useRef();
 
-  async function setupLocalStream(ref) {
+  async function setupLocalStream(ref, options = {}) {
     if (!localStreamRef.current) {
+      const constraints = options.audioOnly
+        ? { audio: true, video: false }
+        : { audio: true, video: true };
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
         localStreamRef.current = stream;
         if (ref && ref.current) ref.current.srcObject = stream;
-      } catch (error) {
-        console.error("Error accessing media devices:", error);
+      } catch (err) {
+        console.error("Error accessing media devices", err);
+        throw err;
       }
     }
     return localStreamRef.current;
   }
 
-  async function createPeer(peerId, isAnswerer, groupName, localVideoRef) {
+  async function createPeer(peerId, isAnswerer, groupName, options = {}) {
     if (pcRef.current[peerId]) return pcRef.current[peerId];
     setParticipants((p) => (p.includes(peerId) ? p : [...p, peerId]));
 
@@ -31,7 +32,7 @@ export default function useWebRTC(username, wsSend) {
     });
     pcRef.current[peerId] = pc;
 
-    const localStream = await setupLocalStream(localVideoRef);
+    const localStream = await setupLocalStream(null, options);
     if (localStream) {
       localStream
         .getTracks()
@@ -55,9 +56,9 @@ export default function useWebRTC(username, wsSend) {
     };
 
     if (!isAnswerer) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
       try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
         wsSend({
           type: "video_offer",
           from: username,
@@ -69,6 +70,7 @@ export default function useWebRTC(username, wsSend) {
         console.error("Error creating offer:", error);
       }
     }
+
     return pc;
   }
 
@@ -79,7 +81,9 @@ export default function useWebRTC(username, wsSend) {
     try {
       if (msg.type === "video_offer") {
         if (!pc)
-          pc = await createPeer(msg.from, true, msg.group, localVideoRef);
+          pc = await createPeer(msg.from, true, msg.group, {
+            audioOnly: false,
+          });
         await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -95,17 +99,20 @@ export default function useWebRTC(username, wsSend) {
       } else if (msg.type === "ice_candidate" && pc) {
         await pc.addIceCandidate(JSON.parse(msg.candidate));
       }
-    } catch (error) {
-      console.error("Error handling signaling:", error);
+    } catch (err) {
+      console.error("Error handling signaling", err);
     }
   }
 
   return {
     participants,
+    setParticipants,
     remoteStreams,
+    setRemoteStreams,
     setupLocalStream,
     createPeer,
     handleSignaling,
     localStreamRef,
+    pcRef,
   };
 }

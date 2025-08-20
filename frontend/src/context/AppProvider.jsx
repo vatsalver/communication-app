@@ -6,23 +6,29 @@ export function AppProvider({ children }) {
   const [username, setUsername] = useState("");
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [group, setGroup] = useState("");
-  const [joinedGroup, setJoinedGroup] = useState("");
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [dmUser, setDMUser] = useState("");
   const [dmMessage, setDMMessage] = useState("");
+  const [group, setGroup] = useState("");
+  const [joinedGroup, setJoinedGroup] = useState("");
   const [groupMsg, setGroupMsg] = useState("");
   const [callTarget, setCallTarget] = useState("");
+  const [voiceTarget, setVoiceTarget] = useState("");
+  const [inCall, setInCall] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
   const wsRef = useRef(null);
+  const WS_URL = import.meta.env.VITE_WS_URL;
 
   const {
     participants,
+    setParticipants,
     remoteStreams,
+    setRemoteStreams,
     createPeer,
     handleSignaling,
     localStreamRef,
+    pcRef,
   } = useWebRTC(username, (msg) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
@@ -30,23 +36,41 @@ export function AppProvider({ children }) {
   });
 
   useEffect(() => {
+    if (!inCall) {
+      // Clean up on call end
+      Object.values(pcRef.current).forEach((pc) => pc && pc.close());
+      setParticipants([]);
+      setRemoteStreams({});
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+      pcRef.current = {};
+    }
+  }, [inCall]);
+
+  useEffect(() => {
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
 
   function connect(user) {
     setUsername(user);
-    wsRef.current = new WebSocket("ws://localhost:8080/ws");
-
+    wsRef.current = new WebSocket(WS_URL);
     wsRef.current.onopen = () => {
       wsRef.current.send(JSON.stringify({ type: "register", from: user }));
       setConnected(true);
+      if (joinedGroup) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "join_group",
+            from: user,
+            group: joinedGroup,
+          })
+        );
+      }
     };
-
     wsRef.current.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       msgHandler(msg);
     };
-
     wsRef.current.onclose = () => {
       setConnected(false);
       addMsg(
@@ -55,7 +79,6 @@ export function AppProvider({ children }) {
         "error"
       );
     };
-
     wsRef.current.onerror = (error) => {
       console.error("WebSocket error:", error);
       addMsg("system", "❌ Connection error occurred.", "error");
@@ -76,6 +99,28 @@ export function AppProvider({ children }) {
   }
 
   function msgHandler(msg) {
+    console.log("Received WS message:", msg);
+    // Fix: Confirm joined group from backend message (matches Go backend)
+    if (
+      msg.type === "system" &&
+      msg.content.includes("Successfully joined group")
+    ) {
+      // "✅ Successfully joined group 'groupname'"
+      const match = msg.content.match(/Successfully joined group '(.+)'/);
+      if (match) {
+        setJoinedGroup(match[1]);
+        console.log("✅ Joined group confirmed:", match[1]);
+      }
+    }
+    if (msg.type === "system" && msg.content.includes("created successfully")) {
+      // "✅ Group 'groupname' created successfully"
+      const match = msg.content.match(/Group '(.+)' created successfully/);
+      if (match) {
+        setJoinedGroup(match[1]);
+        console.log("✅ Group created and joined:", match[1]);
+      }
+    }
+
     if (msg.type === "system") {
       addMsg(
         "system",
@@ -87,10 +132,12 @@ export function AppProvider({ children }) {
       (msg.type === "dm" && msg.to === username) ||
       (msg.type === "group" && msg.group === joinedGroup)
     ) {
+      console.log("Adding message to chat:", msg);
       const displayMsg = `[${msg.from}${
         msg.to ? "→" + msg.to : msg.group ? "@" + msg.group : ""
       }] ${msg.content}`;
       addMsg(msg.type, displayMsg);
+      console.log("📨 Group message received:", displayMsg);
     }
 
     if (
@@ -101,9 +148,14 @@ export function AppProvider({ children }) {
     ) {
       createPeer(msg.from, true, joinedGroup);
     }
-
     if (msg.type === "start_video" && msg.to === username) {
+      setInCall(true);
       createPeer(msg.from, true, null);
+    }
+
+    if (msg.type === "start_voice" && msg.to === username) {
+      setInCall(true);
+      createPeer(msg.from, true, null, { audioOnly: true });
     }
 
     if (["video_offer", "video_answer", "ice_candidate"].includes(msg.type)) {
@@ -161,7 +213,8 @@ export function AppProvider({ children }) {
           group: trimmed,
         })
       );
-      setJoinedGroup(trimmed);
+      // Do NOT setJoinedGroup here; wait for confirmation!
+      console.log("🔄 Creating group:", trimmed);
     }
   }
 
@@ -179,11 +232,18 @@ export function AppProvider({ children }) {
           group: trimmed,
         })
       );
-      setJoinedGroup(trimmed);
+      // Do NOT setJoinedGroup here; wait for confirmation!
+      console.log("🔄 Joining group:", trimmed);
     }
   }
 
   function sendGroupMsg() {
+    console.log("📤 Attempting to send group message:", {
+      joinedGroup,
+      groupMsg: groupMsg.trim(),
+      wsReady: wsRef.current?.readyState === WebSocket.OPEN,
+    });
+
     if (
       joinedGroup &&
       groupMsg.trim() &&
@@ -199,6 +259,9 @@ export function AppProvider({ children }) {
         })
       );
       setGroupMsg("");
+      console.log("✅ Group message sent to:", joinedGroup);
+    } else {
+      console.log("❌ Cannot send group message - missing requirements");
     }
   }
 
@@ -213,6 +276,7 @@ export function AppProvider({ children }) {
           content: "__start_group_call__",
         })
       );
+      setInCall(true);
     }
   }
 
@@ -230,8 +294,44 @@ export function AppProvider({ children }) {
           to: callTarget.trim(),
         })
       );
+      setInCall(true);
       createPeer(callTarget.trim(), false, null);
     }
+  }
+
+  function initiateVoiceCall() {
+    if (
+      voiceTarget.trim() &&
+      voiceTarget.trim() !== username &&
+      wsRef.current &&
+      wsRef.current.readyState === WebSocket.OPEN
+    ) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: "start_voice",
+          from: username,
+          to: voiceTarget.trim(),
+        })
+      );
+      setInCall(true);
+      createPeer(voiceTarget.trim(), false, null, { audioOnly: true });
+    }
+  }
+
+  function endCall() {
+    // Close all peer connections
+    Object.values(pcRef.current).forEach((pc) => pc && pc.close());
+    // Stop local media stream
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    // Clean up state
+    setInCall(false);
+    setParticipants([]);
+    setRemoteStreams({});
+    localStreamRef.current = null;
+    pcRef.current = {};
+    addMsg("system", "🔴 Call ended.");
   }
 
   const ctx = {
@@ -253,6 +353,8 @@ export function AppProvider({ children }) {
     setGroupMsg,
     callTarget,
     setCallTarget,
+    voiceTarget,
+    setVoiceTarget,
     darkMode,
     setDarkMode,
     sendBroadcast,
@@ -262,6 +364,9 @@ export function AppProvider({ children }) {
     sendGroupMsg,
     startGroupCall,
     initiateCall,
+    initiateVoiceCall,
+    endCall,
+    inCall,
     participants,
     remoteStreams,
     localStreamRef,
