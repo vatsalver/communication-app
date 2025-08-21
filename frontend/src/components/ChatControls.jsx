@@ -48,10 +48,13 @@ export default function ChatControls() {
             placeholder="Share something with everyone..."
             value={broadcastMsg}
             onChange={(e) => setBroadcastMsg(e.target.value)}
-            className="input-modern w-full resize-none"
+            className="input-modern w-full resize-none dark:text-white"
             rows={3}
           />
-          <button type="submit" className="btn-primary w-full">
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium"
+          >
             <Send className="w-4 h-4 mr-2" />
             Broadcast
           </button>
@@ -72,16 +75,19 @@ export default function ChatControls() {
             placeholder="Username"
             value={dmUser}
             onChange={(e) => setDMUser(e.target.value)}
-            className="input-modern w-full"
+            className="input-modern w-full dark:text-white"
           />
           <textarea
             placeholder="Private message..."
             value={dmMessage}
             onChange={(e) => setDMMessage(e.target.value)}
-            className="input-modern w-full resize-none"
+            className="input-modern w-full resize-none dark:text-white"
             rows={2}
           />
-          <button type="submit" className="btn-primary w-full">
+          <button
+            type="submit"
+            className="btn-primary w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium"
+          >
             <Send className="w-4 h-4 mr-2" />
             Send DM
           </button>
@@ -105,10 +111,13 @@ export default function ChatControls() {
               placeholder={`Message to ${joinedGroup}...`}
               value={groupMsg}
               onChange={(e) => setGroupMsg(e.target.value)}
-              className="input-modern w-full resize-none"
+              className="input-modern w-full resize-none dark:text-white"
               rows={2}
             />
-            <button type="submit" className="btn-primary w-full">
+            <button
+              type="submit"
+              className="btn-primary w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 font-medium"
+            >
               <Send className="w-4 h-4 mr-2" />
               Send to Group
             </button>

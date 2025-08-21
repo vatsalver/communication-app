@@ -35,7 +35,7 @@ export default function Register() {
             placeholder="Enter your username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="input-modern w-full text-center"
+            className="input-modern w-full text-center dark:text-white"
             autoFocus
           />
         </div>

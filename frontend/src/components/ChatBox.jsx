@@ -6,9 +6,16 @@ export default function ChatBox() {
   const { messages } = useApp();
   const messagesEndRef = useRef(null);
 
+  /*const scrollAllowedRef = useRef(false);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (scrollAllowedRef.current) {
+      
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      scrollAllowedRef.current = true;
+    }
+  }, [messages]); */
 
   const getMessageStyle = (type, variant) => {
     const baseStyle = "p-3 rounded-xl mb-2 message-animation";

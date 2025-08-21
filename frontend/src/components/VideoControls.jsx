@@ -33,7 +33,7 @@ export default function VideoControls() {
           placeholder="Username to call"
           value={callTarget}
           onChange={(e) => setCallTarget(e.target.value)}
-          className="input-modern w-full"
+          className="input-modern w-full dark:text-white"
         />
         <button
           type="submit"
@@ -67,7 +67,7 @@ export default function VideoControls() {
             )}
           </>
         ) : (
-          <p className="text-gray-500 dark:text-gray-400 text-center py-3">
+          <p className="text-gray-500 dark:text-white text-center py-3">
             Join a group to start group calls
           </p>
         )}

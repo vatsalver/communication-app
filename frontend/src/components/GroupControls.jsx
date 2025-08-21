@@ -35,7 +35,7 @@ export default function GroupControls() {
           placeholder="Enter group name"
           value={group}
           onChange={(e) => setGroup(e.target.value)}
-          className="input-modern w-full"
+          className="input-modern w-full dark:text-white"
         />
         <div className="grid grid-cols-2 gap-3">
           <button

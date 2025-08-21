@@ -18,6 +18,8 @@ export function AppProvider({ children }) {
   const [darkMode, setDarkMode] = useState(false);
 
   const wsRef = useRef(null);
+  const joinedGroupRef = useRef("");
+
   const WS_URL = import.meta.env.VITE_WS_URL;
 
   const {
@@ -36,8 +38,11 @@ export function AppProvider({ children }) {
   });
 
   useEffect(() => {
+    joinedGroupRef.current = joinedGroup;
+  }, [joinedGroup]);
+
+  useEffect(() => {
     if (!inCall) {
-      // Clean up on call end
       Object.values(pcRef.current).forEach((pc) => pc && pc.close());
       setParticipants([]);
       setRemoteStreams({});
@@ -57,12 +62,12 @@ export function AppProvider({ children }) {
     wsRef.current.onopen = () => {
       wsRef.current.send(JSON.stringify({ type: "register", from: user }));
       setConnected(true);
-      if (joinedGroup) {
+      if (joinedGroupRef.current) {
         wsRef.current.send(
           JSON.stringify({
             type: "join_group",
             from: user,
-            group: joinedGroup,
+            group: joinedGroupRef.current,
           })
         );
       }
@@ -92,36 +97,32 @@ export function AppProvider({ children }) {
         type,
         content,
         variant,
-        id: Date.now(),
+        id: Date.now() + Math.random(),
         timestamp: new Date().toLocaleTimeString(),
       },
     ]);
   }
 
   function msgHandler(msg) {
-    console.log("Received WS message:", msg);
-    // Fix: Confirm joined group from backend message (matches Go backend)
     if (
       msg.type === "system" &&
       msg.content.includes("Successfully joined group")
     ) {
-      // "✅ Successfully joined group 'groupname'"
       const match = msg.content.match(/Successfully joined group '(.+)'/);
       if (match) {
-        setJoinedGroup(match[1]);
-        console.log("✅ Joined group confirmed:", match[1]);
+        const normalizedGroup = match[1].trim().toLowerCase();
+        setJoinedGroup(normalizedGroup);
       }
-    }
-    if (msg.type === "system" && msg.content.includes("created successfully")) {
-      // "✅ Group 'groupname' created successfully"
+    } else if (
+      msg.type === "system" &&
+      msg.content.includes("created successfully")
+    ) {
       const match = msg.content.match(/Group '(.+)' created successfully/);
       if (match) {
-        setJoinedGroup(match[1]);
-        console.log("✅ Group created and joined:", match[1]);
+        const normalizedGroup = match[1].trim().toLowerCase();
+        setJoinedGroup(normalizedGroup);
       }
-    }
-
-    if (msg.type === "system") {
+    } else if (msg.type === "system") {
       addMsg(
         "system",
         msg.content,
@@ -130,36 +131,34 @@ export function AppProvider({ children }) {
     } else if (
       msg.type === "broadcast" ||
       (msg.type === "dm" && msg.to === username) ||
-      (msg.type === "group" && msg.group === joinedGroup)
+      (msg.type === "group" &&
+        msg.group &&
+        joinedGroupRef.current &&
+        msg.group.trim().toLowerCase() === joinedGroupRef.current)
     ) {
-      console.log("Adding message to chat:", msg);
       const displayMsg = `[${msg.from}${
         msg.to ? "→" + msg.to : msg.group ? "@" + msg.group : ""
       }] ${msg.content}`;
       addMsg(msg.type, displayMsg);
-      console.log("📨 Group message received:", displayMsg);
-    }
 
-    if (
-      msg.type === "group" &&
-      msg.content === "__start_group_call__" &&
-      msg.group === joinedGroup &&
-      msg.from !== username
+      if (
+        msg.type === "group" &&
+        msg.content === "__start_group_call__" &&
+        msg.group.trim().toLowerCase() === joinedGroupRef.current &&
+        msg.from !== username
+      ) {
+        createPeer(msg.from, true, joinedGroupRef.current);
+      }
+    } else if (
+      ["video_offer", "video_answer", "ice_candidate"].includes(msg.type)
     ) {
-      createPeer(msg.from, true, joinedGroup);
-    }
-    if (msg.type === "start_video" && msg.to === username) {
+      handleSignaling(msg, null);
+    } else if (msg.type === "start_video" && msg.to === username) {
       setInCall(true);
       createPeer(msg.from, true, null);
-    }
-
-    if (msg.type === "start_voice" && msg.to === username) {
+    } else if (msg.type === "start_voice" && msg.to === username) {
       setInCall(true);
       createPeer(msg.from, true, null, { audioOnly: true });
-    }
-
-    if (["video_offer", "video_answer", "ice_candidate"].includes(msg.type)) {
-      handleSignaling(msg, null);
     }
   }
 
@@ -200,7 +199,7 @@ export function AppProvider({ children }) {
   }
 
   function createGroup() {
-    const trimmed = group.trim();
+    const trimmed = group.trim().toLowerCase();
     if (
       trimmed &&
       wsRef.current &&
@@ -213,13 +212,11 @@ export function AppProvider({ children }) {
           group: trimmed,
         })
       );
-      // Do NOT setJoinedGroup here; wait for confirmation!
-      console.log("🔄 Creating group:", trimmed);
     }
   }
 
   function joinGroup() {
-    const trimmed = group.trim();
+    const trimmed = group.trim().toLowerCase();
     if (
       trimmed &&
       wsRef.current &&
@@ -232,21 +229,14 @@ export function AppProvider({ children }) {
           group: trimmed,
         })
       );
-      // Do NOT setJoinedGroup here; wait for confirmation!
-      console.log("🔄 Joining group:", trimmed);
     }
   }
 
   function sendGroupMsg() {
-    console.log("📤 Attempting to send group message:", {
-      joinedGroup,
-      groupMsg: groupMsg.trim(),
-      wsReady: wsRef.current?.readyState === WebSocket.OPEN,
-    });
-
+    const trimmedMessage = groupMsg.trim();
     if (
-      joinedGroup &&
-      groupMsg.trim() &&
+      joinedGroupRef.current &&
+      trimmedMessage &&
       wsRef.current &&
       wsRef.current.readyState === WebSocket.OPEN
     ) {
@@ -254,25 +244,25 @@ export function AppProvider({ children }) {
         JSON.stringify({
           type: "group",
           from: username,
-          group: joinedGroup,
-          content: groupMsg.trim(),
+          group: joinedGroupRef.current,
+          content: trimmedMessage,
         })
       );
       setGroupMsg("");
-      console.log("✅ Group message sent to:", joinedGroup);
+      console.log("✅ Group message sent to:", joinedGroupRef.current);
     } else {
       console.log("❌ Cannot send group message - missing requirements");
     }
   }
 
   function startGroupCall() {
-    if (!joinedGroup) return;
+    if (!joinedGroupRef.current) return;
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
           type: "group",
           from: username,
-          group: joinedGroup,
+          group: joinedGroupRef.current,
           content: "__start_group_call__",
         })
       );
@@ -319,13 +309,10 @@ export function AppProvider({ children }) {
   }
 
   function endCall() {
-    // Close all peer connections
     Object.values(pcRef.current).forEach((pc) => pc && pc.close());
-    // Stop local media stream
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
-    // Clean up state
     setInCall(false);
     setParticipants([]);
     setRemoteStreams({});
